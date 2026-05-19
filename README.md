@@ -19,11 +19,3 @@ cd "d:/Desktop/Code Projects/Eathquake Map"
 python -m http.server 8000
 # then open http://localhost:8000 in your browser
 ```
-
-Push to GitHub
-
-Use the commands provided by the assistant (or the GitHub web UI). Recommended remote name: `origin` and branch `main`.
-
-Security
-
-- Do not commit your real Mapbox token. If you accidentally committed it, rotate it in your Mapbox account immediately.
