@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Earthquake Tracker</title>
+    
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.js"></script>
+    
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+            overflow: hidden;
+        }
+        
+        #map { 
+            position: absolute; 
+            top: 0; 
+            bottom: 0; 
+            width: 100%; 
+        }
+
+        /* Floating dark-themed control panel */
+        #control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(25, 25, 30, 0.9);
+            color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 10;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 250px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .panel-section {
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 15px;
+        }
+
+        .panel-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        h3 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            color: #aaa;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            margin-bottom: 8px;
+            padding: 10px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 13px;
+        }
+
+        .btn:hover { background-color: #555; border-color: #777; }
+        .btn.active { background-color: #3498db; border-color: #2980b9; }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        /* Right sidebar feed */
+        #sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            bottom: 20px;
+            width: 300px;
+            background-color: rgba(25, 25, 30, 0.9);
+            color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 10;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        #sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        #sidebar-header h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        #earthquake-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .quake-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-left: 4px solid #777;
+        }
+
+        .quake-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .quake-mag { font-weight: bold; font-size: 16px; display: inline-block; width: 40px; }
+        .quake-place { font-size: 13px; margin-bottom: 4px; display: block; }
+        .quake-time { font-size: 11px; color: #aaa; }
+
+        /* Custom Dark Box styling */
+        .mapboxgl-popup-content {
+            background-color: #222;
+            color: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 13px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: #222; }
+        .mapboxgl-popup-anchor-top .mapboxgl-popup-tip { border-bottom-color: #222; }
+        .mapboxgl-popup-close-button { color: #aaa; font-size: 16px; padding: 4px; }
+        .mapboxgl-popup-close-button:hover { color: #fff; background-color: transparent; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div id="control-panel">
+        <div class="panel-section">
+            <h3>Time Range</h3>
+            <select id="time-select">
+                <option value="all_hour">Past Hour</option>
+                <option value="all_day">Past Day</option>
+                <option value="all_week" selected>Past Week</option>
+            </select>
+        </div>
+
+        <div class="panel-section">
+            <h3>Visualization Mode</h3>
+            <button class="btn active" id="mode-default" data-layer="earthquake-circles">Magnitude Circles</button>
+            <button class="btn" id="mode-heatmap" data-layer="earthquake-heatmap">Density Heatmap</button>
+            <button class="btn" id="mode-depth" data-layer="earthquake-depth">Depth Scale</button>
+        </div>
+
+        <div class="panel-section">
+            <h3>Extra Layers</h3>
+            <button class="btn" id="toggle-tectonic">Show Tectonic Plates</button>
+        </div>
+
+        <div class="panel-section" id="magnitude-filters">
+            <h3>Magnitude Filter (Circles only)</h3>
+            <button class="btn active" id="btn-all" data-mag="0">All Magnitudes</button>
+            <button class="btn" id="btn-mag3" data-mag="3">Magnitude 3.0+</button>
+            <button class="btn" id="btn-mag5" data-mag="5">Magnitude 5.0+</button>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h2>Earthquake Feed</h2>
+            <div style="font-size: 12px; color: #aaa; margin-top: 5px;" id="feed-stats">Loading...</div>
+        </div>
+        <div id="earthquake-list"></div>
+    </div>
+
+    <script>
+        // Replace with your Mapbox access token (set via environment or .env)
+        mapboxgl.accessToken = 'YOUR_MAPBOX_ACCESS_TOKEN';
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [45.0, 30.0],
+            zoom: 2.5,
+            projection: 'globe'
+        });
+
+        const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: true });
+
+        let currentData = { type: 'FeatureCollection', features: [] };
+        let currentTimeFilter = 'all_week';
+        let currentModeLayer = 'earthquake-circles';
+        
+        const layerIds = ['earthquake-circles', 'earthquake-heatmap', 'earthquake-depth'];
+
+        map.on('style.load', () => {
+            map.setFog({
+                'color': 'rgb(10, 10, 15)',
+                'high-color': 'rgb(24, 24, 30)',
+                'horizon-blend': 0.05,
+                'space-color': 'rgb(0, 0, 0)',
+                'star-intensity': 0.8
+            });
+        });
+
+        map.on('load', () => {
+            // Source for earthquakes
+            map.addSource('earthquakes', {
+                type: 'geojson',
+                data: currentData
+            });
+
+            // Source for tectonic plates
+            map.addSource('tectonic-plates', {
+                type: 'geojson',
+                data: 'https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json'
+            });
+
+            // Tectonic Plates Layer (hidden by default)
+            map.addLayer({
+                id: 'tectonic-plates-layer',
+                type: 'line',
+                source: 'tectonic-plates',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'line-color': '#e67e22',
+                    'line-width': 1.5,
+                    'line-dasharray': [2, 4]
+                }
+            });
+
+            // 1. Default Magnitude Circles Layer
+            map.addLayer({
+                id: 'earthquake-circles',
+                type: 'circle',
+                source: 'earthquakes',
+                layout: { 'visibility': 'visible' },
+                paint: {
+                    'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 1, 3, 8, 20],
+                    'circle-color': ['interpolate', ['linear'], ['get', 'mag'], 1, '#2ecc71', 4, '#f1c40f', 7, '#e74c3c'],
+                    'circle-opacity': 0.8,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#111'
+                }
+            });
+
+            // 2. Heatmap Layer
+            map.addLayer({
+                id: 'earthquake-heatmap',
+                type: 'heatmap',
+                source: 'earthquakes',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'heatmap-weight': ['interpolate', ['linear'], ['get', 'mag'], 0, 0, 8, 1],
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3],
+                    'heatmap-color': [
+                        'interpolate', ['linear'], ['heatmap-density'],
+                        0, 'rgba(33,102,172,0)',
+                        0.2, 'rgb(103,169,207)',
+                        0.4, 'rgb(209,229,240)',
+                        0.6, 'rgb(253,219,199)',
+                        0.8, 'rgb(239,138,98)',
+                        1, 'rgb(178,24,43)'
+                    ],
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 2, 9, 20],
+                    'heatmap-opacity': 0.8
+                }
+            });
+
+            // 3. Depth Scale Layer (mag determines size, depth determines color)
+            map.addLayer({
+                id: 'earthquake-depth',
+                type: 'circle',
+                source: 'earthquakes',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'circle-radius': ['interpolate', ['linear'], ['get', 'mag'], 1, 3, 8, 20],
+                    // Shallow = orange/red, Deep = blue/purple
+                    'circle-color': [
+                        'interpolate', ['linear'], ['get', 'depth'],
+                        0, '#e74c3c',   // 0km
+                        50, '#f39c12',  // 50km
+                        100, '#e67e22', // 100km
+                        300, '#9b59b6', // 300km
+                        600, '#2980b9'  // 600km+
+                    ],
+                    'circle-opacity': 0.8,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#fff'
+                }
+            });
+
+            // Interactions
+            layerIds.forEach(id => {
+                if(id !== 'earthquake-heatmap') {
+                    map.on('click', id, (e) => showPopup(e.features[0]));
+                    map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
+                    map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
+                }
+            });
+
+            // --- UI Logics ---
+            
+            // Time Filter
+            document.getElementById('time-select').addEventListener('change', (e) => {
+                currentTimeFilter = e.target.value;
+                fetchEarthquakeData();
+            });
+
+            // Visualization Modes
+            ['mode-default', 'mode-heatmap', 'mode-depth'].forEach(btnId => {
+                document.getElementById(btnId).addEventListener('click', (e) => {
+                    document.querySelectorAll('#control-panel .panel-section:nth-child(2) .btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    
+                    const targetLayer = e.target.getAttribute('data-layer');
+                    currentModeLayer = targetLayer;
+                    
+                    layerIds.forEach(id => {
+                        map.setLayoutProperty(id, 'visibility', id === targetLayer ? 'visible' : 'none');
+                    });
+                });
+            });
+
+            // Tectonic Toggle
+            const tectonicBtn = document.getElementById('toggle-tectonic');
+            tectonicBtn.addEventListener('click', () => {
+                const isVisible = map.getLayoutProperty('tectonic-plates-layer', 'visibility') === 'visible';
+                map.setLayoutProperty('tectonic-plates-layer', 'visibility', isVisible ? 'none' : 'visible');
+                isVisible ? tectonicBtn.classList.remove('active') : tectonicBtn.classList.add('active');
+            });
+
+            // Magnitude Filters
+            const magButtons = [
+                { id: 'btn-all', mag: 0 },
+                { id: 'btn-mag3', mag: 3.0 },
+                { id: 'btn-mag5', mag: 5.0 }
+            ];
+            
+            magButtons.forEach(btnObj => {
+                document.getElementById(btnObj.id).addEventListener('click', (e) => {
+                    document.querySelectorAll('#magnitude-filters .btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    
+                    const filterMag = btnObj.mag;
+                    const filterQuery = filterMag > 0 ? ['>=', ['get', 'mag'], filterMag] : null;
+                    
+                    // Apply filter to all point layers
+                    layerIds.forEach(id => map.setFilter(id, filterQuery));
+                    
+                    // Update sidebar feed manually
+                    renderSidebar(filterMag);
+                });
+            });
+
+            fetchEarthquakeData();
+            setInterval(fetchEarthquakeData, 300000);
+        });
+
+        // Fetch & Process Data
+        async function fetchEarthquakeData() {
+            try {
+                const url = `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${currentTimeFilter}.geojson`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Enhance data: extract depth into properties
+                data.features.forEach(feature => {
+                    const coords = feature.geometry.coordinates;
+                    feature.properties.depth = coords.length > 2 ? coords[2] : 0;
+                });
+                
+                currentData = data;
+                map.getSource('earthquakes').setData(currentData);
+                
+                // Re-read current magnitude filter and apply to sidebar
+                const activeMagBtn = document.querySelector('#magnitude-filters .btn.active');
+                const filterMag = activeMagBtn ? parseFloat(activeMagBtn.getAttribute('data-mag')) : 0;
+                renderSidebar(filterMag);
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        function renderSidebar(minMag = 0) {
+            const listEl = document.getElementById('earthquake-list');
+            listEl.innerHTML = '';
+            
+            // Filter and sort (largest first)
+            const filtered = currentData.features
+                .filter(f => f.properties.mag >= minMag)
+                .sort((a, b) => b.properties.mag - a.properties.mag);
+            
+            document.getElementById('feed-stats').textContent = `Showing ${filtered.length} earthquakes`;
+
+            filtered.forEach(feature => {
+                const props = feature.properties;
+                const mag = props.mag != null ? props.mag.toFixed(1) : '?';
+                const timeStr = new Date(props.time).toLocaleString();
+                
+                const item = document.createElement('div');
+                item.className = 'quake-item';
+                
+                // Set border color based on magnitude
+                let color = '#2ecc71';
+                if(props.mag >= 4) color = '#f1c40f';
+                if(props.mag >= 7) color = '#e74c3c';
+                item.style.borderLeftColor = color;
+                
+                item.innerHTML = `
+                    <div style="display:flex; align-items:center;">
+                        <span class="quake-mag" style="color: ${color}">${mag}</span>
+                        <div style="flex: 1">
+                            <span class="quake-place">${props.place || 'Unknown Location'}</span>
+                            <span class="quake-time">${timeStr}</span>
+                        </div>
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    const coords = feature.geometry.coordinates;
+                    map.flyTo({
+                        center: [coords[0], coords[1]],
+                        zoom: 6,
+                        essential: true
+                    });
+                    
+                    // Delay popup slightly to allow animation to start
+                    setTimeout(() => showPopup(feature), 800);
+                });
+                
+                listEl.appendChild(item);
+            });
+        }
+
+        function showPopup(feature) {
+            const coordinates = feature.geometry.coordinates.slice();
+            const props = feature.properties;
+            
+            const mag = props.mag != null ? props.mag.toFixed(1) : 'N/A';
+            const place = props.place || 'Unknown location';
+            const timeStr = new Date(props.time).toLocaleString();
+            const depth = props.depth != null ? props.depth.toFixed(1) + ' km' : 'Unknown';
+
+            while (Math.abs(map.getCenter().lng - coordinates[0]) > 180) {
+                coordinates[0] += map.getCenter().lng > coordinates[0] ? 360 : -360;
+            }
+
+            popup.setLngLat(coordinates)
+                .setHTML(`
+                    <strong>Magnitude:</strong> ${mag}<br>
+                    <strong>Depth:</strong> ${depth}<br>
+                    <strong>Location:</strong> ${place}<br>
+                    <strong>Time:</strong> ${timeStr}
+                `)
+                .addTo(map);
+        }
+    </script>
+</body>
+</html>
